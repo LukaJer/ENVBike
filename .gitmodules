@@ -1,0 +1,6 @@
+[submodule "mda-server"]
+	path = mda-server
+	url = git@github.com:chrasa/mda-server.git
+[submodule "mda-publishers"]
+	path = mda-publishers
+	url = git@github.com:chrasa/mda-publishers.git
