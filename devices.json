@@ -40,7 +40,7 @@
     "name": "Particulate Matter",
     "subtitle": "Grimm 11-D",
     "species": ["PM10", "PM4", "PM2.5", "PM1"],
-    "port": "/dev/ttyUSB0",
+    "port": "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9GNY7XK-if00-port0",
     "interval": 6.0,
     "stale_after": 25,
     "offline_after": 120
@@ -61,7 +61,7 @@
     "enabled": true,
     "name": "GPS Receiver",
     "subtitle": "Position & Speed (NMEA)",
-    "port": "/dev/ttyACM0",
+    "port": "/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00",
     "interval": 1.0,
     "stale_after": 15,
     "offline_after": 120
@@ -70,7 +70,7 @@
     "enabled": true,
     "name": "Lufft Wind Sensor",
     "subtitle": "Wind Speed & Direction (UMB)",
-    "port": "/dev/ttyUSB1",
+    "port": "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0",
     "interval": 1.0,
     "stale_after": 15,
     "offline_after": 120
