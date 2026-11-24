@@ -17,6 +17,9 @@
 - [x] **Map Layer Caching Settings**
   - Add settings to configure which map layers (e.g. `OSM`, `Local`, `LocalG`) and zoom/bounding-box regions are cached locally for offline use.
 
+- [ ] **Offline Maps (Munich Tile Cache / MBTiles Import)**
+  - Populate `Local` and `LocalG` offline tile caches for Munich (`z14–z17`, or `z18–z19` as needed) using an OSM-compliant tile source (e.g. MapTiler/Stadia/Carto via Tile Source URL, local `overv/openstreetmap-tile-server`, or an `.mbtiles` / QGIS XYZ export) without hitting `tile.openstreetmap.org` bulk-download blocks.
+
 - [ ] **Campaign Start & Map Readiness Warnings**
   - Show warnings on the map view and when starting a campaign if any enabled instruments or GPS are not ready yet (e.g., disconnected, warming up, reference zero, or no GPS fix).
 

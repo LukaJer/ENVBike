@@ -1,13 +1,20 @@
 {
   "map": {
-    "default_layer": "OSM",
-    "cached_layers": ["LocalG"],
+    "default_layer": "MBTiles",
+    "cached_layers": [
+      "Local"
+    ],
     "cache_bbox": {
       "lat_min": 48.06,
       "lat_max": 48.22,
       "lon_min": 11.45,
       "lon_max": 11.72
     },
-    "cache_zooms": [14, 15, 16, 17]
+    "cache_zooms": [],
+    "tile_source_url": "http://127.0.0.1:8080/tile/{z}/{x}/{y}.png",
+    "active_mbtiles": "planet_11.337_48.047_b531ac7e.mbtiles",
+    "mbtiles_descriptions": {
+      "planet_11.337_48.047_b531ac7e.mbtiles": "Munich and Vicinity"
+    }
   }
 }
