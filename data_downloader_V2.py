@@ -18,13 +18,16 @@ ip_address = '192.168.0.101'
 port = '5000'
 url = f'http://{ip_address}:{port}/measurement/gas'
 
+limit = 5050
+offset = 0
+
 query_params = {
 	'with-location': 1,
 	'start': start_time,
 	'end': end_time,
 	'type': species,
-	'limit': '5050',
-	'offset': '0'
+	'limit': str(limit),
+	'offset': str(offset)
 }
 
 # generate safe filename
@@ -35,34 +38,35 @@ try:
 	with open(filename, 'w') as f:
 		f.write("[")
 		first = True
-		
-		while True:
-			response = requests.get(url, params=query_params)
-			response.raise_for_status()
-	
-			# make it column data and not one line
-			data = response.json()
-	
-	#with open(filename, 'wb') as f:
-	#	for chunk in response.iter_content(chunk_size=8192):
-	#		f.write(chunk)
-			items = data.get("results", data)
-			
-			if not items:
-				break
-				
-			for item in items:
-				if not first:
-					f.write(",\n")
-				json.dump(item, f)
-				first = False
-				
-			offset += limit
-			print(f"Downloaded {offset} items ...")
-		
-		f.write("]")
+		try:
+			while True:
+				query_params['offset'] = str(offset)
+				response = requests.get(url, params=query_params)
+				response.raise_for_status()
+
+				# make it column data and not one line
+				data = response.json()
+				is_plain_list = isinstance(data, list)
+				items = data.get("results", []) if isinstance(data, dict) else data
+
+				if not items:
+					break
+
+				for item in items:
+					if not first:
+						f.write(",\n")
+					json.dump(item, f)
+					first = False
+
+				offset += len(items)
+				print(f"Downloaded {offset} items ...")
+
+				if is_plain_list or len(items) < limit:
+					break
+		finally:
+			f.write("]")
 
 	print(f'Saved data to: {filename}.')
 
-except requests.exception.RequestException as e:
+except requests.exceptions.RequestException as e:
 	print(f'Download failed: {e}')

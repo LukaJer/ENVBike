@@ -1,0 +1,13 @@
+{
+  "map": {
+    "default_layer": "OSM",
+    "cached_layers": ["LocalG"],
+    "cache_bbox": {
+      "lat_min": 48.06,
+      "lat_max": 48.22,
+      "lon_min": 11.45,
+      "lon_max": 11.72
+    },
+    "cache_zooms": [14, 15, 16, 17]
+  }
+}

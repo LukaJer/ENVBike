@@ -14,6 +14,9 @@
 - [x] **Auto-Fit Map to Finished Campaign Route**
   - When viewing a finished campaign on `/map/<id>`, automatically fit the map bounds (`map.fitBounds(...)`) to the recorded route instead of centering on the default coordinates.
 
+- [x] **Map Layer Caching Settings**
+  - Add settings to configure which map layers (e.g. `OSM`, `Local`, `LocalG`) and zoom/bounding-box regions are cached locally for offline use.
+
 - [ ] **Campaign Start & Map Readiness Warnings**
   - Show warnings on the map view and when starting a campaign if any enabled instruments or GPS are not ready yet (e.g., disconnected, warming up, reference zero, or no GPS fix).
 

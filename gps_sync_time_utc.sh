@@ -3,9 +3,22 @@
 # use file on Desktop terminal with: bash FILENAME
 # only works if GPS sensor is outdoors or close to windows
 
-DEVICE="/dev/ttyACM0"
+DEFAULT_DEVICE="/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00"
+if [[ ! -e "$DEFAULT_DEVICE" ]]; then
+	DEFAULT_DEVICE="/dev/ttyACM0"
+fi
+DEVICE="${1:-$DEFAULT_DEVICE}"
 TIMEOUT=60 # seconds
 START=$(date +%s)
+
+if [ ! -r "$DEVICE" ]; then
+	echo "GPS device not readable: $DEVICE" >&2
+	exit 1
+fi
+
+stty -F "$DEVICE" raw -echo 2>/dev/null || true
+exec 3< "$DEVICE"
+trap 'exec 3<&-' EXIT
 
 echo "Waiting for GPS fix ..."
 
@@ -15,22 +28,23 @@ while true; do
 	if (( NOW - START > TIMEOUT )); then
 		echo "No GPS fix after $TIMEOUT seconds."
 		exit 1
-	fi	
+	fi
 
-	LINE=$(head -n 1 < "$DEVICE")
+	if ! IFS= read -r -t 2 LINE <&3; then
+		continue
+	fi
+	LINE=${LINE%$'\r'}
 
-	# check if ther is a RMC sentence
-	if [[ "$LINE" == \$GNRMC* ]]; then
-		STATUS=$(echo "$LINE" | cut -d',' -f3)
+	# check if there is an RMC sentence ($GNRMC or $GPRMC)
+	if [[ "$LINE" == \$G[NP]RMC* ]]; then
+		IFS=',' read -r _ TIME STATUS _ _ _ _ _ _ DATE _ <<< "$LINE"
 
 		# only proceed if data is valid
-		if [[ "$STATUS" == "A" ]]; then
+		if [[ "$STATUS" == "A" && "$TIME" =~ ^[0-9]{6} && "$DATE" =~ ^[0-9]{6}$ ]]; then
 			echo "GPS fix acquired."
-			TIME=$(echo "$LINE" | cut -d',' -f2)
-			DATE=$(echo "$LINE" | cut -d',' -f10)
 			break
 		else
-			echo "... no fix yet (RMC status V)"
+			echo "... no fix yet (RMC status: ${STATUS:-unknown})"
 		fi
 	fi
 done
@@ -46,11 +60,8 @@ MO=${DATE:2:2}
 YY=${DATE:4:2}
 YYYY="20$YY"
 
-# convert month to name
-MONTH=$(date -d "$YYYY-$MO-01" "+%b" | tr '[:lower:]' '[:upper:]')
-
-echo "Setting system time to UTC: ${DD} ${MONTH} ${YYYY} ${HH}:${MM}:${SS}"
+echo "Setting system time to UTC: ${YYYY}-${MO}-${DD} ${HH}:${MM}:${SS}"
 
 # Set system time (UTC)
-sudo date -s "${DD} ${MONTH} ${YYYY} ${HH}:${MM}:${SS}"
+sudo date -u -s "${YYYY}-${MO}-${DD} ${HH}:${MM}:${SS}"
 echo "Done."
