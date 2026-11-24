@@ -1,6 +1,6 @@
 {
   "map": {
-    "default_layer": "MBTiles",
+    "default_layer": "OSM",
     "cached_layers": [
       "Local"
     ],
