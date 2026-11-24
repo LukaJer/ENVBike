@@ -15,6 +15,7 @@
     "active_mbtiles": "planet_11.337_48.047_b531ac7e.mbtiles",
     "mbtiles_descriptions": {
       "planet_11.337_48.047_b531ac7e.mbtiles": "Munich and Vicinity"
-    }
+    },
+    "color_palette": "default"
   }
 }
