@@ -40,3 +40,22 @@ Running summary of implemented features, bug fixes, and architectural changes ac
   - **Frontend**: Prevented hidden `GasMeasurementPlotter` instances from mutating the shared marker, fixed dropped first measurements & sub-second batch truncation, fixed screenshot mode on live campaigns / failed `/wind-mean`, and fixed MapLibre UMD bundling in Webpack.
   - **Publishers**: Stripped UTC `tzinfo` from local NMEA timestamps, eliminated 60s–6min blocking in `Grimm11D.read_measurements()`, hardened `LI7810Publisher` MQTT JSON parsing/reconnect/shutdown, added `GasPublisher` TCP reconnect + `\r\n` framing fix, and made all `connect()` loops `stop_event`-interruptible with `SIGTERM` handling in `publish.py`.
   - **Root Scripts**: Fixed `data_downloader.py` / `data_downloader_V2.py` crashes, fixed `gps_sync_time_utc.sh` UTC flag (`date -u -s`) + serial reading, and fixed `mmu_downloader_core.py` whole-second chunk alignment, `±15s` GPS buffer, and `"H2O-LI"` fallback.
+
+## 5. Performance Optimizations & Real-Time Push Updates (SSE)
+- **Frontend (`mda-server/static/`)**:
+  - Switched map species polling to **lazy / active-only** creation & polling ([index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts)), pausing hidden plotters and only fetching `getBaseConcentration()` when a baseline species is selected.
+  - Replaced per-segment `L.geoJson()` SVG layers + CSS `drop-shadow` with Leaflet's **Canvas renderer** (`L.canvas()`), lightweight `L.polyline` + dark casing polyline, and lazy click popups ([gas-measurement-plotter.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/gas-measurement-plotter.ts), [livemap.css](file:///home/luka/Code/EnvBike/mda-server/static/src/livemap.css)).
+  - Switched Webpack ([webpack.config.js](file:///home/luka/Code/EnvBike/mda-server/static/webpack.config.js)) to **`mode: 'production'`**, shrinking `bundle.js` from `1.59 MiB` to `1020 KiB`.
+- **Backend (`mda-server/app.py`)**:
+  - Tuned SQLite PRAGMAs (`synchronous=NORMAL`, `cache_size=-16000`, `temp_store=MEMORY` alongside `WAL` and `busy_timeout=5000`).
+  - Added thread-local read-only `.mbtiles` connection caching (`_get_mbtiles_conn`) keyed by `(path, mtime_ns)`.
+  - Added `ix_log_datetime` and `ix_log_sensor_datetime` indexes on the `log` table.
+  - Added batch JSON list ingestion to `POST /measurement/<type>` (single SQLite transaction per batch, backwards-compatible with single-dict payloads).
+  - Refactored `/campaign/<id>/download` to stream CSV and JSON via `stream_with_context` + `.yield_per(500)` and skip `WindMeasurement` queries for CSV exports.
+  - Added **Server-Sent Events (`GET /api/live/stream`)** backed by `threading.Condition` + `live_cache_version` (coalescing bursts, falling back to 2s `age_seconds` heartbeats) and wired [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html) via `EventSource` with automatic polling fallback.
+- **Publishers (`mda-publishers/publishers/`)**:
+  - Added `requests.Session()` HTTP Keep-Alive in [base_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/base_publisher.py) (closed cleanly on shutdown) and thread-local `requests.Session()` in [logger.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/logger.py).
+  - Added `_try_post_measurements_batch()` in `BasePublisher` and updated `EnveaPublisher`, `GrimmPublisher`, `GasPublisher`, and `LI7810Publisher` to send 1 batch `POST` per cycle.
+- **Setup & Packaging**:
+  - Added executable [install.sh](file:///home/luka/Code/EnvBike/install.sh) to bootstrap system dependencies (`apt-get`), submodules, both Python virtual environments, required runtime directories, and the Webpack frontend build cleanly on a new machine.
+  - Replaced pinned `pip freeze` dumps in [mda-server/requirements.txt](file:///home/luka/Code/EnvBike/mda-server/requirements.txt) and [mda-publishers/requirements.txt](file:///home/luka/Code/EnvBike/mda-publishers/requirements.txt) with direct `>=` minimum dependencies, and added `"webpack": "^5.90.0"` to [package.json](file:///home/luka/Code/EnvBike/mda-server/static/package.json).

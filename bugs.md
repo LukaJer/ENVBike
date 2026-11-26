@@ -10,7 +10,7 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 
 | Area | Critical | High | Medium | Low |
 |---|---:|---:|---:|---:|
-| `mda-server/` Backend | 0 | 0 | 6 | 2 |
+| `mda-server/` Backend | 0 | 0 | 6 | 1 |
 | `mda-server/` Frontend & Templates | 0 | 0 | 7 | 3 |
 | `mda-publishers/` Publishers & Sensors | 0 | 0 | 3 | 0 |
 | Root Scripts & Config | 0 | 0 | 6 | 2 |
@@ -87,10 +87,9 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Issue**: `/campaign/delete/<int:campaign_id>` and `/enable-measurements/<int:enable>` mutate state via `GET` without CSRF protection, and `/campaign/start` allows starting multiple simultaneous active (`end=None`) campaigns.
 - **Fix**: Switch state-mutating routes to `@app.post(...)` and guard `/campaign/start` against duplicate active campaigns.
 
-### B14. `[Open]` `[Low]` Wasted DB Query & Unbounded In-Memory Buffering in `campaign_download`
-- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L851-L952)
-- **Issue**: When `format=csv`, `campaign_download` still queries all `WindMeasurement` rows even though CSV output ignores `winds`. Both CSV and JSON materialize all rows and the entire serialized payload in memory (OOM risk on long campaigns).
-- **Fix**: Skip querying `winds` when `fmt == 'csv'`, and stream exports via a generator `Response`.
+### B14. `[Fixed]` `[Low]` Wasted DB Query & Unbounded In-Memory Buffering in `campaign_download`
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py)
+- **Status**: Fixed — skips `WindMeasurement` queries when `format=csv` and streams both CSV and JSON via `stream_with_context` + `.yield_per(500)` in 500-row chunks.
 
 ---
 

@@ -22,6 +22,7 @@ The root directory is a git repository (branch `HAL`) with two git submodules (`
   - `data_downloader_v3.py`: Manual backup downloader wrapping `mmu_downloader_core.py`.
   - `data_downloader.py`, `data_downloader_V2.py`: Legacy single-window / offset downloaders.
   - `gps_sync_time_utc.sh`: Reads `$GNRMC`/`$GPRMC` from the u-blox `/dev/serial/by-id/...` device (fallback `/dev/ttyACM0`) and sets system UTC time via `sudo date -u -s`.
+  - `install.sh`: Idempotent setup script for new PCs/Raspberry Pis (system packages, submodules, both Python venvs, directories, and Webpack frontend build).
 
 ## Architecture & Data Flow
 
@@ -46,6 +47,11 @@ The root directory is a git repository (branch `HAL`) with two git submodules (`
 
 ## Common Commands
 
+- **Bootstrap on a new PC / Raspberry Pi**:
+  ```bash
+  ./install.sh                  # Full install (apt, venvs, npm build)
+  ./install.sh --no-apt         # Skip apt-get; use existing system Python/Node
+  ```
 - **Frontend type-check & build (`mda-server`)**:
   ```bash
   cd mda-server/static && ./node_modules/.bin/tsc --noEmit && npm run build

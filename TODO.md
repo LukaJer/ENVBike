@@ -21,10 +21,12 @@
 - [ ] **Campaign Start & Map Readiness Warnings** *(Est. 1–2 hrs)*
   - Show warnings on the map view and when starting a campaign if any enabled instruments or GPS are not ready yet (e.g., disconnected, warming up, reference zero, or no GPS fix).
 
-- [ ] **Real-Time Push Updates (SSE)** *(Est. 1.5–2.5 hrs)*
-  - Replace `/api/live` polling in `campaigns.html` (and optionally map live updates) with Server-Sent Events (`EventSource`) pushed immediately when `POST /measurement/<type>` receives new data.
+- [x] **Real-Time Push Updates (SSE)**
+  - Replaced `/api/live` polling in `campaigns.html` with Server-Sent Events (`EventSource` on `/api/live/stream` with automatic polling fallback) pushed immediately when `POST /measurement/<type>` or `/enable-measurements/<enable>` updates state.
 
 - [ ] **RTC Battery & GPS Hardware Clock Sync** *(Est. 20–30 mins)*
   - Run `sudo -n hwclock -w` right after `sudo -n date -s` in `GpsPublisher._sync_system_time_once()` (`mda-publishers/publishers/gps_publisher.py`) so the RPi RTC hardware chip stays synced to GPS.
   - Optionally add a timeout/flag to `gps_time.wait_for_gps_initialization()` so `EnveaPublisher` and `GrimmPublisher` can start using RTC time indoors before a GPS fix arrives.
-- [ ] **PErformance Improvements**
+
+- [x] **Performance Improvements**
+  - Lazy active-only species polling, Leaflet Canvas renderer + dark casing polylines + lazy popups, production Webpack build (`1020 KiB`), SQLite PRAGMA tuning + `log` indexes, thread-local `.mbtiles` connection cache, batch ingestion + `requests.Session` Keep-Alive, streaming exports, and SSE push updates.
