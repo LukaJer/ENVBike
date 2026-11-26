@@ -44,5 +44,5 @@ try:
 		
 	print(f'Saved data to: {filename}.')
 
-except requests.exception.RequestException as e:
+except requests.exceptions.RequestException as e:
 	print(f'Download failed: {e}')

@@ -98,7 +98,7 @@ def get_species_list(ip, port, explicit=None, timeout=10):
     except requests.exceptions.RequestException as e:
         print(f"  (could not reach /gas-types: {e}; using built-in fallback list)")
     return ["NO", "NO2", "NOx", "O3", "CO", "PM10", "PM4", "PM2.5", "PM1",
-            "CH4", "CH4-LI", "CO2", "CO2-LI", "H2O"]
+            "CH4", "CH4-LI", "CO2", "CO2-LI", "H2O", "H2O-LI"]
 
 
 # low-level single-window fetch
@@ -122,51 +122,70 @@ def _fetch_window(url, params_base, start_dt, end_dt):
     return data if isinstance(data, list) else []
 
 
+def _align_window(start_dt, end_dt):
+    """Align [start_dt, end_dt] boundaries to whole seconds."""
+    start_aligned = start_dt.replace(microsecond=0)
+    end_aligned = end_dt.replace(microsecond=0)
+    if end_dt.microsecond > 0:
+        end_aligned += datetime.timedelta(seconds=1)
+    return start_aligned, end_aligned
+
+
 def _fetch_window_complete(url, params_base, start_dt, end_dt, depth=0):
     """Fetch a window completely, subdividing if the row cap is hit.
 
     If a single request returns ROW_CAP rows, we assume it was truncated and
-    split the window in half, recursing into each half. This guarantees we never
-    silently lose rows beyond the cap, and it adapts to the local data rate.
+    split the window in half on whole-second boundaries, recursing into each
+    half. This guarantees we never silently lose rows beyond the cap, and it
+    adapts to the local data rate.
     """
+    start_dt, end_dt = _align_window(start_dt, end_dt)
     rows = _fetch_window(url, params_base, start_dt, end_dt)
 
     if len(rows) < ROW_CAP:
-        return rows                   
+        return rows
 
-    
     span = end_dt - start_dt
     if span <= MIN_CHUNK:
-        
         print(f"      warning: row cap hit on a {span} window that cannot be "
               f"split further; some rows in this slice may be missing.")
         return rows
 
-    mid = start_dt + span / 2
-    
+    half_seconds = int(span.total_seconds()) // 2
+    mid = start_dt + datetime.timedelta(seconds=half_seconds)
+
     left = _fetch_window_complete(url, params_base, start_dt, mid, depth + 1)
-    right = _fetch_window_complete(
-        url, params_base, mid + datetime.timedelta(microseconds=1000), end_dt, depth + 1)
+    right = _fetch_window_complete(url, params_base, mid, end_dt, depth + 1)
     return left + right
 
 
 def _fetch_all_chunked(url, params_base, start_dt, end_dt):
     """Fetch the whole [start, end] range by walking it in INITIAL_CHUNK steps,
-    fetching each chunk completely, and de-duplicating by datetime.
+    fetching each chunk completely, and de-duplicating by (datetime, type).
     Returns rows sorted by datetime."""
+    start_dt, end_dt = _align_window(start_dt, end_dt)
+    if start_dt > end_dt:
+        return []
+
     seen = set()
     out = []
-    cur = start_dt
-    while cur < end_dt:
-        chunk_end = min(cur + INITIAL_CHUNK, end_dt)
-        rows = _fetch_window_complete(url, params_base, cur, chunk_end)
+
+    def _collect(rows):
         for r in rows:
-            
             key = (r.get("datetime"), r.get("type"))
             if key not in seen:
                 seen.add(key)
                 out.append(r)
-        cur = chunk_end + datetime.timedelta(microseconds=1000)
+
+    if start_dt == end_dt:
+        _collect(_fetch_window_complete(url, params_base, start_dt, end_dt))
+    else:
+        cur = start_dt
+        while cur < end_dt:
+            chunk_end = min(cur + INITIAL_CHUNK, end_dt)
+            _collect(_fetch_window_complete(url, params_base, cur, chunk_end))
+            cur = chunk_end
+
     out.sort(key=lambda r: r.get("datetime") or "")
     return out
 
@@ -177,7 +196,8 @@ def fetch_locations(ip, port, start, end):
     """Download all location fixes in the window (chunked), sorted by time.
     Returns (times_list, loc_list) with times_list sorted."""
     url = f"{_base(ip, port)}/measurement/location"
-    start_dt, end_dt = _parse_dt(start), _parse_dt(end)
+    pad = datetime.timedelta(seconds=MAX_MATCH_SECONDS)
+    start_dt, end_dt = _parse_dt(start) - pad, _parse_dt(end) + pad
     raw = _fetch_all_chunked(url, {}, start_dt, end_dt)
     pairs = []
     for loc in raw:

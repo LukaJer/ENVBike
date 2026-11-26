@@ -3,3 +3,6 @@ __pycache__/
 *$py.class
 *.swp
 .DS_Store
+*_warmup.txt
+*.mbtiles
+settings.json

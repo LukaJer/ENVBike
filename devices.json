@@ -1,0 +1,78 @@
+{
+  "AC32e": {
+    "enabled": true,
+    "name": "Nitrous Oxides",
+    "subtitle": "Envea AC32e",
+    "species": ["NO", "NO2", "NOx"],
+    "mode": "modbus",
+    "host": "169.254.169.1",
+    "port": 502,
+    "interval": 1.0,
+    "stale_after": 15,
+    "offline_after": 120
+  },
+  "O342e": {
+    "enabled": true,
+    "name": "Ozone",
+    "subtitle": "Envea O342e",
+    "species": ["O3"],
+    "mode": "modbus",
+    "host": "169.254.169.2",
+    "port": 502,
+    "interval": 1.0,
+    "stale_after": 15,
+    "offline_after": 120
+  },
+  "CO12e": {
+    "enabled": true,
+    "name": "Carbon Monoxide",
+    "subtitle": "Envea CO12e",
+    "species": ["CO"],
+    "mode": "modbus",
+    "host": "169.254.169.3",
+    "port": 502,
+    "interval": 1.0,
+    "stale_after": 15,
+    "offline_after": 120
+  },
+  "Grimm11D": {
+    "enabled": true,
+    "name": "Particulate Matter",
+    "subtitle": "Grimm 11-D",
+    "species": ["PM10", "PM4", "PM2.5", "PM1"],
+    "port": "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9GNY7XK-if00-port0",
+    "interval": 6.0,
+    "stale_after": 25,
+    "offline_after": 120
+  },
+  "Picarro": {
+    "enabled": false,
+    "name": "Greenhouse Gases",
+    "subtitle": "Picarro CRDS",
+    "species": ["CH4", "CO2", "H2O"],
+    "host": "192.168.0.104",
+    "port": 51020,
+    "inlet_delay": 11,
+    "interval": 2.0,
+    "stale_after": 15,
+    "offline_after": 120
+  },
+  "GPS": {
+    "enabled": true,
+    "name": "GPS Receiver",
+    "subtitle": "Position & Speed (NMEA)",
+    "port": "/dev/serial/by-id/usb-u-blox_AG_-_www.u-blox.com_u-blox_GNSS_receiver-if00",
+    "interval": 1.0,
+    "stale_after": 15,
+    "offline_after": 120
+  },
+  "Wind": {
+    "enabled": true,
+    "name": "Lufft Wind Sensor",
+    "subtitle": "Wind Speed & Direction (UMB)",
+    "port": "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0",
+    "interval": 1.0,
+    "stale_after": 15,
+    "offline_after": 120
+  }
+}
