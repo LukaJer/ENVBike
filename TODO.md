@@ -27,4 +27,4 @@
 - [ ] **RTC Battery & GPS Hardware Clock Sync** *(Est. 20–30 mins)*
   - Run `sudo -n hwclock -w` right after `sudo -n date -s` in `GpsPublisher._sync_system_time_once()` (`mda-publishers/publishers/gps_publisher.py`) so the RPi RTC hardware chip stays synced to GPS.
   - Optionally add a timeout/flag to `gps_time.wait_for_gps_initialization()` so `EnveaPublisher` and `GrimmPublisher` can start using RTC time indoors before a GPS fix arrives.
-
+- [ ] **PErformance Improvements**
