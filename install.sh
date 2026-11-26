@@ -98,6 +98,14 @@ setup_venv "mda-publishers" "$ROOT_DIR/mda-publishers"
 mkdir -p "$ROOT_DIR/mda-server/static/maps" "$ROOT_DIR/mda-server/instance"
 
 if [[ "$SKIP_FRONTEND" -eq 0 ]]; then
+    if command -v node >/dev/null 2>&1; then
+        NODE_VER="$(node -v 2>/dev/null || true)"
+        NODE_MAJOR="${NODE_VER#v}"
+        NODE_MAJOR="${NODE_MAJOR%%.*}"
+        if [[ "$NODE_MAJOR" =~ ^[0-9]+$ ]] && [[ "$NODE_MAJOR" -lt 18 ]]; then
+            echo "Warning: Node.js $NODE_VER detected; Node.js >= 18 is recommended to build the frontend bundle." >&2
+        fi
+    fi
     echo "==> Installing frontend packages & building bundle.js"
     (
         cd "$ROOT_DIR/mda-server/static"

@@ -1,6 +1,6 @@
 # Code Review & Known Bugs (`bugs.md`)
 
-Comprehensive code review of `mda-server/`, `mda-publishers/`, and root utility scripts on branch `HAL` (`EnvBike` `abb5328`, `mda-server` `7a2e7dd`, `mda-publishers` `77b4eac`).
+Comprehensive code review of `mda-server/`, `mda-publishers/`, and root utility scripts on branch `HAL` (`EnvBike` `456c031`, `mda-server` `ba66818`, `mda-publishers` `7a33539`).
 
 Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 
@@ -10,10 +10,10 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 
 | Area | Critical | High | Medium | Low |
 |---|---:|---:|---:|---:|
-| `mda-server/` Backend | 0 | 0 | 6 | 1 |
-| `mda-server/` Frontend & Templates | 0 | 0 | 7 | 3 |
-| `mda-publishers/` Publishers & Sensors | 0 | 0 | 3 | 0 |
-| Root Scripts & Config | 0 | 0 | 6 | 2 |
+| `mda-server/` Backend | 0 | 0 | 11 | 3 |
+| `mda-server/` Frontend & Templates | 0 | 0 | 9 | 4 |
+| `mda-publishers/` Publishers & Sensors | 0 | 0 | 5 | 0 |
+| Root Scripts & Config | 0 | 0 | 7 | 2 |
 
 ---
 
@@ -91,6 +91,53 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py)
 - **Status**: Fixed — skips `WindMeasurement` queries when `format=csv` and streams both CSV and JSON via `stream_with_context` + `.yield_per(500)` in 500-row chunks.
 
+### B15. `[Fixed]` `[Critical]` Gunicorn Thread Pool Exhaustion in `GET /api/live/stream`
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py), [mdau_server.service](file:///home/luka/Code/EnvBike/mda-server/mdau_server.service#L11)
+- **Status**: Fixed — `api_live_stream()` enforces `sse_semaphore = threading.BoundedSemaphore(4)` (returning `503` when full so clients fall back to polling), releases in `finally:`, and caps each stream at `SSE_MAX_LIFETIME_SECONDS = 90.0` so stale sockets recycle and `EventSource` transparently reconnects.
+
+### B16. `[Fixed]` `[High]` `GET /api/live/stream` Holds a SQLAlchemy `QueuePool` Connection and SQLite WAL Snapshot Indefinitely
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py)
+- **Status**: Fixed — `event_stream()` wraps `_build_live_payload(include_db=True)` in `try ... finally: db.session.remove()` before entering the SSE loop, immediately releasing the SQLAlchemy connection and WAL read snapshot.
+
+### B17. `[Fixed]` `[High]` Unhandled `ValueError` in `GET /api/live/stream` (`allow_nan=False`) Triggers Infinite Reconnect-Crash Loop
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py)
+- **Status**: Fixed — shared `_finite_float()` sanitizes `concentration`, `latitude`, `longitude`, `speed`, and `heading` in `_build_live_payload()` (both DB and `live_cache` paths) so `NaN`/`Inf` serialize cleanly as `null`.
+
+### B18. `[Open]` `[Medium]` `serve_mbtiles_tile` Unhandled `OverflowError` (`500`) & `_get_mbtiles_conn` `OSError` / FD Leak
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L100-L135), [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L927-L944)
+- **Issue**: `<int:z>` matches `z >= 64`, causing `(1 << z) - 1 - y` (or oversized `x`/`y >= 2^63`) to raise `OverflowError` on `sqlite3.Connection.execute` (`500`). `_get_mbtiles_conn` also calls `os.stat(path)` outside the `try` block (`FileNotFoundError` race `500`), and deleted `.mbtiles` files keep cached SQLite handles open per thread.
+- **Fix**: Reject `z` outside `0..24` or out-of-range `x`/`y` with `404`, catch `OSError` alongside `sqlite3.Error`, and call `_evict_mbtiles_conn(path)` when a file is absent.
+
+### B19. `[Open]` `[Medium]` Batch `POST /measurement/<type>` & `_update_live_cache` Overwrite Newer `live_cache` Entries with Older Timestamps
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L292-L357), [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L731)
+- **Issue**: `_update_live_cache()` overwrites entries unconditionally without checking `m.datetime >= existing["datetime"]`. An out-of-order or backfill batch overwrites `live_cache` with older readings, which `_build_live_payload(include_db=False)` then pushes to SSE clients.
+- **Fix**: Only update cached entries when `existing is None` or `m.datetime >= existing["datetime"]`.
+
+### B20. `[Open]` `[Medium]` `POST /api/settings` Crashes with `TypeError` (`500`) on Unhashable `default_layer` / `color_palette`
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L866-L874)
+- **Issue**: `m.get("default_layer") in valid_layers` and `m.get("color_palette") in valid_palettes` test set membership without checking `isinstance(..., str)`, raising `TypeError: unhashable type` (`500`) on JSON lists/objects.
+- **Fix**: Validate `isinstance(val, str)` first (and return `400` on invalid `default_layer`).
+
+### B21. `[Open]` `[Medium]` `campaign_download` Matches Measurements Against Unfiltered GPS Glitches
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L1281-L1377)
+- **Issue**: `campaign_download()` fetches raw `LocationMeasurement` rows without calling `Interpolator.filter_plausible_locations(locs)`, so exported CSV/JSON files match gas points to `(0, 0)` and jump spikes that map views filter out.
+- **Fix**: Pass `locs` through `Interpolator.filter_plausible_locations(locs)` before building `loc_times`.
+
+### B22. `[Open]` `[Medium]` `Interpolator.filter_plausible_locations` Permanently Accepts an Initial-Fix Glitch & Drops Short Post-Glitch Sequences
+- **Files**: [interplator.py](file:///home/luka/Code/EnvBike/mda-server/util/interplator.py#L50-L79)
+- **Issue**: The first in-bounds non-`(0, 0)` fix is accepted unconditionally into `filtered`. If the first fix is a spatial glitch, 3+ valid fixes trigger `candidate` recovery while leaving the glitch in `filtered[0]`; if only 1–2 valid fixes follow in the query window, only the glitch is returned.
+- **Fix**: Drop an unconfirmed `filtered[0]` when `len(filtered) == 1` triggers recovery, or require confirmation before committing the initial fix.
+
+### B23. `[Open]` `[Low]` `screenshot` Route Omits Offline Map Metadata from `map_settings`
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L479-L496), [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L1454-L1473)
+- **Issue**: `screenshot()` passes raw `load_settings()["map"]` without `active_mbtiles_info`, `has_local_png`, or `has_local_gray_png`, forcing screenshots to fall back to online `OSM` tiles instead of configured offline `MBTiles`/`Local` layers.
+- **Fix**: Extract a shared helper for enriching `map_settings` and call it in both `campaign_map()` and `screenshot()`.
+
+### B24. `[Open]` `[Low]` `_set_sqlite_pragma` Runs `PRAGMA journal_mode=WAL;` Before `PRAGMA busy_timeout=5000;`
+- **Files**: [app.py](file:///home/luka/Code/EnvBike/mda-server/app.py#L1546-L1553)
+- **Issue**: Setting `journal_mode=WAL` before `busy_timeout=5000` can fail immediately with `database is locked` if another process holds a lock before WAL is enabled.
+- **Fix**: Execute `PRAGMA busy_timeout=5000;` first in `_set_sqlite_pragma`.
+
 ---
 
 ## `mda-server/` — Frontend & Templates (`templates/`, `static/src/`)
@@ -115,10 +162,11 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Files**: [windrose.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/windrose.ts#L4-L55), [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L215-L217)
 - **Status**: Fixed (`bundle.js` rebuilt) — defaults `campaign.end` to `new Date()`, wraps `fetchWindMeanData` in `try/catch` with `Number.isFinite` fallback (`"Wind mean N/A"`), and attaches `.catch(...)` in `index.ts`.
 
-### F6. `[Open]` `[Medium]` Settings Tab: `deg2num()` `NaN`/`Infinity` on Out-of-Range Latitudes & Generic Save Error
-- **Files**: [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1196-L1229), [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1311-L1367)
-- **Issue**: `deg2num()` produces `NaN`/`-Infinity` for `|lat| >= 90` (outside Web Mercator `±85.0511`), displaying `"Estimated: NaN tiles (~NaN MB)"` and triggering `500` on the backend. `parseFloat("48.1abc")` silently accepts trailing garbage, and non-OK responses from `POST /api/settings` show generic `"Failed to save"` instead of the server's `error` message.
-- **Fix**: Strictly parse numeric inputs and validate `[-85.0511, 85.0511]` / `[-180, 180]` and `min <= max` in `updateTileEstimate()` and before POSTing; clamp latitude in `deg2num()`; surface `res.error` on `/api/settings` failures.
+### F6. `[Partially Fixed]` `[Medium]` Settings Tab Shows Generic Error on Save Failure
+- **Files**: [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1453-L1457)
+- **Status**:
+  - **Fixed / Removed**: The `deg2num()` / PNG tile downloader UI was removed from `campaigns.html`.
+  - **Still Open**: `#map-settings-form` submit handler still displays generic `'Failed to save'` on non-OK `POST /api/settings` responses instead of surfacing `res.error`.
 
 ### F7. `[Open]` `[Medium]` `loadSettingsUI()` Overwrites Unsaved Settings Edits After Tile Caching or Tab Switching
 - **Files**: [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1187-L1189), [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1268-L1283)
@@ -130,10 +178,9 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Issue**: `pollDiagnostics()` and `pollLive()` do not cancel superseded in-flight fetches (`AbortController` / request sequence ID), allowing stale responses to overwrite newer filtered output. `pollDiagnostics()` also unconditionally reassigns `#diag-sensor.innerHTML` every 3s even when `data.sensors` hasn't changed, closing the native dropdown while the user is selecting an option.
 - **Fix**: Use `AbortController` or a monotonic request ID in both pollers, guard DOM updates with `activeTab === 'diagnostics'`, and only rebuild `#diag-sensor` when `data.sensors` changes.
 
-### F9. `[Open]` `[Medium]` `onFinished` Auto-Fit Reads Mutable `active_plotter` After Species Switch
-- **Files**: [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L152-L193)
-- **Issue**: `active_plotter.onFinished` is attached to the initial `start_key` plotter, but its callback reads the mutable `active_plotter` variable. Switching species before `start_key` finishes causes `start_key`'s callback to call `fitBounds` on the newly selected (possibly still loading/empty) plotter.
-- **Fix**: Capture `const initialPlotter = active_plotter;` and check `if (active_plotter === initialPlotter)` before calling `fitBounds`.
+### F9. `[Fixed]` `[Medium]` `onFinished` Auto-Fit Reads Mutable `active_plotter` After Species Switch
+- **Files**: [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L209-L219)
+- **Status**: Fixed (`bundle.js` rebuilt) — `plotter.onFinished` closes over `const plotter`, checks `active_plotter === plotter`, and validates `bounds && bounds.isValid()`. (See `F21` for remaining `hasFittedInitialBounds` ordering.)
 
 ### F10. `[Open]` `[Medium]` `Slider` (`gas-slider.ts`): Negative `max`, `null`/`NaN` Crashes, Stuck Popup & Focus Conflict
 - **Files**: [gas-slider.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/gas-slider.ts#L16-L69)
@@ -161,9 +208,37 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Fix**: Match `/\/map\/(\d+)/`, type `end: Date | null`, and validate `!Number.isNaN(parsed.getTime())`.
 
 ### F15. `[Open]` `[Low]` `<a href="#">` Missing `preventDefault()` & `livemap.css` Override Order
-- **Files**: [focus-control.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/focus-control.ts#L20-L36), [wind-control.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/wind-control.ts#L19-L35), [livemap.css](file:///home/luka/Code/EnvBike/mda-server/static/src/livemap.css#L8-L16)
+- **Files**: [focus-control.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/focus-control.ts#L20-L36), [wind-control.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/wind-control.ts#L19-L35), [livemap.css](file:///home/luka/Code/EnvBike/mda-server/static/src/livemap.css#L8-L53)
 - **Issue**: `FocusControl` and `WindControl` click handlers omit `L.DomEvent.preventDefault(e)`, mutating `location.hash` to `#`. `livemap.css` is injected by `style-loader` *after* `index.html`'s `<style>` block, overriding `#control-panel` `line-height` and `height`.
 - **Fix**: Call `L.DomEvent.preventDefault(e)` in both handlers and remove obsolete `#control-panel` / `.slider` rules from `livemap.css`.
+
+### F16. `[Fixed]` `[High]` Duplicate Polling Loops & Stale UI/State Mutations on Rapid Species Switching
+- **Files**: [measurement-plotter.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/measurement-plotter.ts), [gas-measurement-plotter.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/gas-measurement-plotter.ts)
+- **Status**: Fixed (`bundle.js` rebuilt) — `MeasurementPlotter` tracks `pollGeneration` and `AbortController` (aborting & bumping generation in `stopPlotting()`), ignores `AbortError`, and checks generation before `plotData()`, `onFinished?.()`, or `setTimeout`; `GasMeasurementPlotter.drawMeasurement()` guards slider and numeric display updates with `this.is_visible`.
+
+### F17. `[Fixed]` `[High]` `sseFailCount` Not Reset in `startLiveStream()`, Unguarded Closed `EventSource` Handlers & `pollLive()` Race
+- **Files**: [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html)
+- **Status**: Fixed — `startLiveStream()` resets `sseFailCount = 0` and guards `onopen`/`onmessage`/`onerror` with `src === liveSource`; `stopLiveStream()` detaches handlers and aborts `liveFetchController`; `pollLive()` uses `AbortController` and verifies `ctrl === liveFetchController && !liveSource` before updating DOM or rescheduling.
+
+### F18. `[Open]` `[Medium]` Raster MBTiles Shares One `L.tileLayer` Instance Across `"MBTiles"` and `"MBTilesG"`
+- **Files**: [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L124-L138)
+- **Issue**: For raster `.mbtiles` (`png`/`jpg`/`webp`), the same `rasterLayer` instance is assigned to both `tile_layers["MBTiles"]` and `tile_layers["MBTilesG"]`. Leaflet keys layers by `L.stamp(layer)`, causing both radio buttons to appear checked, forcing full tile reloads on click, and not rendering `"MBTilesG"` in grayscale.
+- **Fix**: Omit `"MBTilesG"` for raster `.mbtiles` (falling back `"MBTilesG"` -> `"MBTiles"`) or use a distinct `L.tileLayer` instance with CSS grayscale.
+
+### F19. `[Open]` `[Medium]` Early Species Pill Clicks Dropped While `await getOrCreatePlotter(start_key)` Is Pending
+- **Files**: [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L239-L258)
+- **Issue**: `main()` awaits `getOrCreatePlotter(start_key)` before registering `#gas-selector`'s `'change'` listener. Clicking a `.gas-pill` while initial baseline stats are loading updates the pill highlight and fires `'change'` before any listener exists, leaving the active pill out of sync with the plotted species.
+- **Fix**: Register the `#gas-selector` `'change'` listener before `await getOrCreatePlotter(start_key)` (or sync `selector.value` after startup).
+
+### F20. `[Open]` `[Medium]` Saving Map Settings Before `/api/offline-maps` Loads Wipes `active_mbtiles`
+- **Files**: [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L880-L882), [campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html#L1381-L1459)
+- **Issue**: Submitting `#map-settings-form` before `loadSettingsUI()` finishes fetching `/api/offline-maps` (or after a failed fetch) reads empty `#mbtiles-list` inputs and sends `active_mbtiles: ""` and `mbtiles_descriptions: {}`, wiping saved settings.
+- **Fix**: Track whether `#mbtiles-list` has loaded successfully and omit `active_mbtiles` / `mbtiles_descriptions` from `collectMapSettingsPayload()` until populated.
+
+### F21. `[Open]` `[Low]` `hasFittedInitialBounds` Set Before Checking `bounds.isValid()`
+- **Files**: [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts#L210-L219)
+- **Issue**: `hasFittedInitialBounds = true;` executes before checking `bounds && bounds.isValid()`, preventing `fitBounds` from running on a subsequent species if the initial species has no valid GPS-matched points.
+- **Fix**: Move `hasFittedInitialBounds = true;` inside `if (bounds && bounds.isValid())`.
 
 ---
 
@@ -203,6 +278,28 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Files**: [envea_analyzer.py](file:///home/luka/Code/EnvBike/mda-publishers/sensors/envea_analyzer.py#L30-L63), [envea_gas_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/envea_gas_publisher.py#L45-L68)
 - **Issue**: `EnveaAnalyzer.__init__` defaults `connection=None` and `mode="stream"`. Calling `connect()`, `close()`, or `_read_text()` without a `ConnectionStrategy` raises `AttributeError` (including in `finally` shutdown).
 - **Fix**: Validate `if self._mode != "modbus" and self._connection is None: raise ValueError(...)` and guard `if self._connection is not None:` in `close()`.
+
+### P9. `[Fixed]` `[High]` Thread-Unsafe `requests.Session` Shared Across `BasePublisher` & `LI7810Publisher` Paho Thread (+ Shutdown Stall)
+- **Files**: [base_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/base_publisher.py), [li7810_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/li7810_publisher.py)
+- **Status**: Fixed — `BasePublisher` uses thread-local sessions closed via `_close_sessions()`, orders `self.shutdown()` before the `timeout=1.0` `"Disconnected"` log in `finally:`, and `LI7810Publisher.on_message()` enqueues batches onto `self._queue` drained by `measurement_routine()`.
+
+### P10. `[Fixed]` `[High]` `LI7810Publisher.on_message` Misses `OverflowError`/`OSError`, Accepts `NaN`/`Inf` & Stays Stuck `"Unconnected"`
+- **Files**: [li7810_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/li7810_publisher.py)
+- **Status**: Fixed — catches `(OverflowError, OSError)` alongside parse/type errors, rejects non-finite timestamps/concentrations via `math.isfinite()`, and posts `"OK"` / error status from `measurement_routine()`.
+
+### P11. `[Fixed]` `[High]` `GPS._is_plausible_fix` Unconditionally Accepts First-Fix Glitches & Clamps Backward Clock Jumps to `dt_s = 0.0`
+- **Files**: [gps.py](file:///home/luka/Code/EnvBike/mda-publishers/sensors/gps.py)
+- **Status**: Fixed — `_is_plausible_fix()` computes `dt_s` from `time.monotonic()` (immune to backward wall-clock/DST jumps) and requires `RECOVERY_CONSECUTIVE_FIXES` (`3`) consistent fixes before establishing the initial `_last_valid_fix`.
+
+### P12. `[Open]` `[Medium]` `Logger` Leaks Thread-Local `requests.Session` Objects & Ignores HTTP Error Statuses
+- **Files**: [logger.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/logger.py#L13-L28), [gps_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/gps_publisher.py#L27-L43)
+- **Issue**: `Logger._get_session()` creates unclosed `requests.Session()` instances per calling thread (including short-lived threads like `_sync_system_time_once`) and discards the `Response` without checking `not resp.ok`.
+- **Fix**: Track sessions in `Logger` for cleanup on shutdown (or avoid keep-alive in ephemeral threads) and warn on `not resp.ok`.
+
+### P13. `[Open]` `[Medium]` Unchunked `BasePublisher._try_post_measurements_batch` Risks Dropping Large Picarro Buffers on 5s Timeout
+- **Files**: [base_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/base_publisher.py#L72-L88), [gas_publisher.py](file:///home/luka/Code/EnvBike/mda-publishers/publishers/gas_publisher.py#L42-L50)
+- **Issue**: `GasPublisher` drains the Picarro buffer and submits all rows in one HTTP `POST` with `timeout=5.0`; large backlogs can time out on a Raspberry Pi and lose the cleared buffer.
+- **Fix**: Chunk large batches (e.g., 200–500 measurements per `POST`) and/or scale timeout with payload size.
 
 ---
 
@@ -283,6 +380,15 @@ Statuses: **`[Open]`**, **`[Partially Fixed]`**, **`[Fixed]`**.
 - **Files**: [data_downloader.py](file:///home/luka/Code/EnvBike/data_downloader.py#L21-L34)
 - **Issue**: `requests.get(..., stream=True)` has no `timeout`, and `limit=5050` / `with-location=1` silently truncates large windows or drops points >5s from a GPS fix.
 - **Fix**: Add `timeout=60` or retire in favor of `data_downloader_v3.py`.
+
+### R18. `[Fixed]` `[High]` `install.sh` Installs `apt` `nodejs`/`npm` (`< 20.9.0`) Incompatible with `webpack-cli@^7.3.1`
+- **Files**: [install.sh](file:///home/luka/Code/EnvBike/install.sh), [package.json](file:///home/luka/Code/EnvBike/mda-server/static/package.json#L26)
+- **Status**: Fixed — updated `"webpack-cli"` to `"^5.1.4"` (Node 18+ compatible) in `package.json` and added a Node.js `>= 18` version check in `install.sh`.
+
+### R19. `[Open]` `[Medium]` `install.sh` Unbound `$USER` (`set -u`), Unconditional `sudo`, and Unrecoverable Partial `venv`s
+- **Files**: [install.sh](file:///home/luka/Code/EnvBike/install.sh#L2), [install.sh](file:///home/luka/Code/EnvBike/install.sh#L53-L54), [install.sh](file:///home/luka/Code/EnvBike/install.sh#L88-L115)
+- **Issue**: `id -nG "$USER"` fails with `USER: unbound variable` when `$USER` is unset; `sudo` fails in minimal `root` containers lacking `sudo`; and if `python3 -m venv` previously failed mid-creation leaving `bin/python` without `pip`, re-runs skip venv creation and crash.
+- **Fix**: Resolve `TARGET_USER="${SUDO_USER:-${USER:-$(id -un)}}"`, skip `sudo` when `EUID == 0`, and check `[[ ! -x "$venv_dir/bin/pip" ]]` using `python3 -m venv --clear`.
 
 ---
 
