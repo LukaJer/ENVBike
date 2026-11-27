@@ -7,7 +7,7 @@ Running summary of implemented features, bug fixes, and architectural changes ac
 ## 1. Dashboard, Live Monitoring & Diagnostics (`mda-server`)
 - **Live Instrument Dashboard & `devices.json` Integration**:
   - Replaced legacy campaign listing with a tabbed dashboard ([campaigns.html](file:///home/luka/Code/EnvBike/mda-server/templates/campaigns.html)) featuring **Campaigns**, **Live**, **Diagnostics**, and **Settings** tabs.
-  - Added `/api/live` (`live_cache` + DB fallback) with per-instrument status badges (`OK`, `Warming up`, `Reference zero`, `ERROR`, `Disconnected`) and automatic hiding of stale values when status is not `OK`.
+  - Added `/api/live` (`live_cache` + DB fallback) with per-instrument status badges (`OK`, `Warming up`, `Reference zero`, `ERROR`, `Disconnected`), automatic hiding of stale values when status is not `OK`, and an `#instruments-warning` banner + submit confirmation when starting a campaign with disconnected or warming-up instruments.
 - **Diagnostics Tab**:
   - Added live log viewer (`/api/logs`) with source filtering, error-only toggle, and DB size indicator.
   - Added embedded web shell (`/api/terminal`), enabled on LAN via `MDA_ENABLE_TERMINAL=1` in [mdau_server.service](file:///home/luka/Code/EnvBike/mda-server/mdau_server.service).
@@ -25,7 +25,9 @@ Running summary of implemented features, bug fixes, and architectural changes ac
   - Integrated `maplibre-gl@4.7.1` + `@maplibre/maplibre-gl-leaflet` ([mbtiles-style.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/mbtiles-style.ts), [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts)) for offline **Color (`MBTiles`)** and **Grayscale (`MBTilesG`)** layers with smooth overzooming up to `z19`.
 - **Settings Tab & Track Contrast**:
   - Added `settings.json` persistence (`/api/settings`) for default map layer, active `.mbtiles` selection with size/tile-count/editable descriptions, and track color palettes (`default`, `plasma`, `turbo`).
-  - Added a dark track outline (`trackCasingPane` at `z-index: 399` below `overlayPane` in [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts) and [gas-measurement-plotter.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/gas-measurement-plotter.ts)) so yellow/amber concentration segments stay legible without overlapping neighboring segments when zoomed out, plus a `#track-loading` spinner pill ([index.html](file:///home/luka/Code/EnvBike/mda-server/templates/index.html)) showing progress while tracks load.
+  - Added a dark track outline (`trackCasingPane` at `z-index: 399` below `overlayPane` in [index.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/index.ts) and [gas-measurement-plotter.ts](file:///home/luka/Code/EnvBike/mda-server/static/src/gas-measurement-plotter.ts)) so yellow/amber concentration segments stay legible without overlapping neighboring segments when zoomed out, plus a `#track-loading` spinner pill ([index.html](file:///home/luka/Code/EnvBike/mda-server/templates/index.html)) and batch-level UI/pan updates (`onBatchPlotted()`, `hasMoreBacklog`) for fast live catch-up.
+- **Mock Testing (`mda-server`)**:
+  - Added a 52.01 km `Munich Extended Loop` track to [mock_location_measurements.xml](file:///home/luka/Code/EnvBike/mda-server/tests/mock/mock_location_measurements.xml) and `--campaign` / `--track` CLI options to [mock_measurements.py](file:///home/luka/Code/EnvBike/mda-server/mock_measurements.py).
 - **GPS Glitch Filtering**:
   - Added `GPS._is_plausible_fix()` ([gps.py](file:///home/luka/Code/EnvBike/mda-publishers/sensors/gps.py)) and `Interpolator.filter_plausible_locations()` ([interplator.py](file:///home/luka/Code/EnvBike/mda-server/util/interplator.py)) to reject `(0.0, 0.0)`, `NaN`/out-of-bounds, and `>100 m/s` jump spikes (with 3-fix recovery) for both live recording and historical campaign playback.
 
